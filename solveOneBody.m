@@ -1,12 +1,13 @@
 function [x,u]=solveOneBody(N,nlev)
-    Nel=2^N;
-    Nno=Nel+1;
+    Nel=2^N; %Defines Number of Elements
+    Nno=Nel+1; %Defines Numnber of Nodes
     
-    x=(0:(2^N))/(2^N);
-    k=(2^N)*(0.5+4.5*0.5*(x(1:end-1)+x(2:end)));
+    x=(0:(2^N))/(2^N); %Displacments Vector (0-1)
+    k=(2^N)*(0.5+4.5*0.5*(x(1:end-1)+x(2:end))); %Stiffness vector for nodes defined by function
     
-    ii=[1;reshape(repmat(2:(Nno-1),3,1),1,(Nno-2)*3,1);Nno];
-    jj=(2:(Nno-1));jj=[jj-1;jj;jj+1];
+    
+    ii=[1;reshape(repmat(2:(Nno-1),3,1),1,(Nno-2)*3,1)';Nno]; %ii appears un unsed (check) Repmat - Replicate and tile an array ReShape-Reshapes repmat 1XNel+1X1 ' was missing so dimentions not work added it seesm to work now
+    jj=(2:(Nno-1));jj=[jj-1;jj;jj+1];%node numbering file? 
     jj=[1;reshape(jj,(Nno-2)*3,1);Nno];
     vv=-[k(1:end-1);k(2:end)];
     vv=[vv(1,:); -vv(1,:)-vv(2,:); vv(2,:)];
@@ -55,3 +56,4 @@ function uNext=jacSmooth(w,K,b,uPrev,n)
         uPrev=uNext;
     end
 end
+
