@@ -59,11 +59,11 @@ for ii=1:inc %iterate till solution final
     
     if (overc<0)%if penertarting
         while (max(abs(du))>tol*abs(U0/inc))%moving back spring
-            du=Kmatc\(b+rc*overc-Kmat*u); %small push back factor
-            u=u+du;%push back
-            overc=u(Nno1+1)-u(Nno1)+g0; %redfine over correction
+            du=Kmatc\(b+rc*overc-Kmat*u);
+            u=u+du;
+            overc=u(Nno1+1)-u(Nno1)+g0;
         end
     end
 end
-u1=u(1:Nno1);u2=u(Nno1+(1:Nno2)); %final answer
+u1=u(1:Nno1);u2=u(Nno1+(1:Nno2));
 end
