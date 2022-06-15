@@ -1,1 +1,1 @@
-solveOneBody(4,1)
+solveOneBody(4,2)

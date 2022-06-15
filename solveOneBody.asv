@@ -32,7 +32,6 @@ end
 function u=mlSolve(w,K,b,u,n,lev)
 
     if lev>1 %if level is greater that 1
-        %finding it hard to follow this part of the code
         u=jacSmooth(w,K,b,u,n);
         [inter,rest,Kc]=mlOper(K);
         rc=rest*(b-K*u);
@@ -57,9 +56,9 @@ function [inter,rest,Kc]=mlOper(K)
     Kc=rest*K*inter;
 end
 
-function uNext=jacSmooth(w,K,b,uPrev,n)
+function uNext=jacSmooth(w,K,b,uPrev,n)%jacobien smoother
     for ii=1:n %for all ii
-        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev); %Meaning of w?
+        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev) %Meaning of w?
         uPrev=uNext;
     end
 end
