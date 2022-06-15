@@ -1,3 +1,5 @@
+
+
 function [x,u]=solveOneBody(N,nlev)
     Nel=2^N; %Defines Number of Elements
     Nno=Nel+1; %Defines Numnber of Nodes
@@ -6,32 +8,36 @@ function [x,u]=solveOneBody(N,nlev)
     k=(2^N)*(0.5+4.5*0.5*(x(1:end-1)+x(2:end))); %Stiffness vector for nodes defined by function
     
     
-    ii=[1;reshape(repmat(2:(Nno-1),3,1),1,(Nno-2)*3,1)';Nno]; %ii appears un unsed (check) Repmat - Replicate and tile an array ReShape-Reshapes repmat 1XNel+1X1 ' was missing so dimentions not work added it seesm to work now
-    jj=(2:(Nno-1));jj=[jj-1;jj;jj+1];%node numbering file? 
-    jj=[1;reshape(jj,(Nno-2)*3,1);Nno];
-    vv=-[k(1:end-1);k(2:end)];
-    vv=[vv(1,:); -vv(1,:)-vv(2,:); vv(2,:)];
-    vv=[k(1)+k(2);reshape(vv,(Nno-2)*3,1);k(end-1)+k(end)];
-    Kmat=sparse(ii,jj,vv,Nno,Nno,2+(Nno-2)*3);
+    ii=[1;reshape(repmat(2:(Nno-1),3,1),1,(Nno-2)*3,1)';Nno]; %ii Repmat - Replicate and tile an array ReShape-Reshapes repmat 1XNel+1X1 ' was missing so dimentions not work added it seesm to work now
+    jj=(2:(Nno-1));jj=[jj-1;jj;jj+1]; %node numbering file
+    jj=[1;reshape(jj,(Nno-2)*3,1);Nno]; %forming triplet vector
+    vv=-[k(1:end-1);k(2:end)]; %concainated two spring rows (K) together of 1,2(combine with next line can likely be done)
+    vv=[vv(1,:); -vv(1,:)-vv(2,:); vv(2,:)]; %vv combined with (k1+k2) in central row
+    vv=[k(1)+k(2);reshape(vv,(Nno-2)*3,1);k(end-1)+k(end)]; %k(1)+k(2) BC and vv combines into vector ending with k(n-1)+k(n) BC
+    Kmat=sparse(ii,jj,vv,Nno,Nno,2+(Nno-2)*3);% forms tridigonal stiffness matrix 
+  
+    b=[zeros(Nno-1,1);-0.01*(k(end-1)+k(end))];%no.element long zero matrix and concat -(k(n-1)+k(n)) on end BC
     
-    b=[zeros(Nno-1,1);-0.01*(k(end-1)+k(end))];
+    u=[zeros(Nno-1,1);-0.01]; %no.element long zero matrix and concat -0.01
     
-    u=[zeros(Nno-1,1);-0.01];
     % u=-0.01*(0:(Nno-1))'/(Nno-1);
-    u=mlSolve(0.61,Kmat,b,u,2,nlev);
+    
+    u=mlSolve(0.61,Kmat,b,u,2,nlev); %Solve functions
+    
     % m=diag((diag(Kmat)).^0.5);
     % u=pcg(Kmat,b,[],[],m,m,u);
     % u=Kmat\b;
 end
 
 function u=mlSolve(w,K,b,u,n,lev)
-    if lev>1
+
+    if lev>1 %if level is greater that 1
         u=jacSmooth(w,K,b,u,n);
         [inter,rest,Kc]=mlOper(K);
         rc=rest*(b-K*u);
         u=u+inter*mlSolve(w,Kc,rc,0*rc,n,lev-1);
         u=jacSmooth(w,K,b,u,n);
-    else
+    else %at largest level use PCG to solve 
         m=diag(diag(K));
         u=pcg(K,b,[],[],m);
     end
@@ -50,7 +56,7 @@ function [inter,rest,Kc]=mlOper(K)
     Kc=rest*K*inter;
 end
 
-function uNext=jacSmooth(w,K,b,uPrev,n)
+function uNext=jacSmooth(w,K,b,uPrev,n)%jacobien smoother
     for ii=1:n
         uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev);
         uPrev=uNext;
