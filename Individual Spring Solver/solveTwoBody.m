@@ -54,16 +54,16 @@ for ii=1:inc %iterate till solution final
     
     b=sparse(Nno1+Nno2,1,vv,Nno1+Nno2,1,1); %BC and location
     u=Kmat\b; %displacment finded
-    overc=u(Nno1+1)-u(Nno1)+g0; %over corrention is has been pushed in too far?
+    overc=u(Nno1+1)-u(Nno1)+g0; %over corrention is has been pushed in too far? (over closure)
     du=inf;
     
     if (overc<0)%if penertarting
         while (max(abs(du))>tol*abs(U0/inc))%moving back spring
-            du=Kmatc\(b+rc*overc-Kmat*u);
-            u=u+du;
-            overc=u(Nno1+1)-u(Nno1)+g0;
+            du=Kmatc\(b+rc*overc-Kmat*u); %small push back factor
+            u=u+du;%push back
+            overc=u(Nno1+1)-u(Nno1)+g0; %redfine over correction
         end
     end
 end
-u1=u(1:Nno1);u2=u(Nno1+(1:Nno2));
+u1=u(1:Nno1);u2=u(Nno1+(1:Nno2)); %final answer
 end

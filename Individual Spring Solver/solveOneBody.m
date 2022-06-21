@@ -18,7 +18,7 @@ function [x,u]=solveOneBody(N,nlev)
   
     b=[zeros(Nno-1,1);-0.01*(k(end-1)+k(end))];%no.element long zero matrix and concat -(k(n-1)+k(n)) on end BC
     
-    u=[zeros(Nno-1,1);-0.01]; %no.element long zero matrix and concat -0.01
+    u=[zeros(Nno-1,1);-0.01]; %no.element long zero matrix and concat -0.01 first guess
     
     % u=-0.01*(0:(Nno-1))'/(Nno-1);
     
@@ -52,14 +52,18 @@ function [inter,rest,Kc]=mlOper(K)
     ss=[1;repmat([0.5;1;0.5],szc1-2,1);1];
     inter=sparse(ii,jj,ss,sz1,szc1,3*szc1+2);
     [ii,jj,ss]=find(inter(2:end-1,2:end-1));
+    %inter grid to refine mesh
     rest=sparse([1;jj+1;szc1],[1;ii+1;sz1],...
         [1;0.5*ss;1],szc1,sz1,3*szc1+2);
+    %restriction grid 
     Kc=rest*K*inter;
+
+    %coauresend C
 end
 
 function uNext=jacSmooth(w,K,b,uPrev,n)
     for ii=1:n %for all ii
-        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev); %Meaning of w?
+        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev); %jacobien solver formula on wikipedia
         uPrev=uNext;
     end
 end
