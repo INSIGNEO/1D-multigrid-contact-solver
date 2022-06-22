@@ -200,11 +200,11 @@ end
 function [inter,rest,Kc]=mlOper(K)
     
     sz1=size(K,1);
-    szc1=floor((sz1+1)/2);%removed plus one from here seems to work but could creat bug down line?
+    szc1=floor((sz1+1)/2);%removed plus one from here seems to work but could creat bug down line? %added floor instead for rounding to stop errors
 
     ii=[1;reshape(repmat((1:2:sz1-4),3,1)+(1:3)',[],1);sz1];
     jj=[1;reshape(repmat(2:(szc1-1),3,1),[],1);szc1];
-    ss=[1;repmat([0.5;1;0.5],szc1-2,1);1]; %added floor instead for rounding to stop errors
+    ss=[1;repmat([0.5;1;0.5],szc1-2,1);1]; 
     
     
     inter=sparse(ii,jj,ss,sz1,szc1,3*szc1+2);
