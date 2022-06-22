@@ -1,6 +1,7 @@
+% solveOneBody(5,3)
+% solveTwoBody(3,4,1)
+coarsTwoBody(3,4,1,2)
 
-solveOneBody(5,3)
-% solveTwoBody(3,5,10)
 
 %Two Body Functions
 function [x1,u1,x2,u2]=solveTwoBody(M,N,x20)
@@ -118,12 +119,94 @@ function u=mlSolve(w,K,b,u,n,lev)
     end
 end
 
+
+function uNext=jacSmooth(w,K,b,uPrev,n)
+    for ii=1:n %for all ii
+        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev); %jacobien solver formula on wikipedia
+        uPrev=uNext;
+    end
+end
+
+%Two MG Code
+
+function []=coarsTwoBody(M,N,x20,nlev)
+
+    Mel=2^M; Mnod=Mel+1; Nel=2^N; Nnod=Nel+1; %Defines number of elemements and nodes could be better noted with M
+
+    xM=(0:(Mel))/(Mel);%lengh vector 1
+    ki=0.5;kf=5; %defining stiffness bounds
+    kM=(Mel)*(ki+(kf-ki)*0.5*(xM(1:end-1)+xM(2:end))); %defining stiffness vector
+
+    xN=(2^(N-M))*(0:(2^N))/(2^N);%lengh vector 2
+    kfix=2.5;% stiffness second spring
+    kN=(Nel)*(kfix+0.0*0.5*(xN(1:end-1)+xN(2:end)));%stiffness vector feel like it could be simplar
+    xN=x20+xN;%shifted spring
+    g0=xN(1)-xM(end); %gap
+    
+    ii=[1;reshape(repmat(2:(Mnod-1),3,1),(Mnod-2)*3,1);Mnod;Mnod];%element colum
+
+    jj=(2:(Mnod-1)); jj=[jj-1;jj;jj+1]; %element ordering row
+    jj=[1;reshape(jj,(Mnod-2)*3,1);Mnod-1;Mnod]; %change to vector
+    vv=[kM(1:end-1);kM(2:end)]; 
+    vv=[-vv(1,:); vv(1,:)+vv(2,:); -vv(2,:)];
+    vv=[reshape(vv,(Mnod-2)*3,1);-kN(end);kN(end)];%values for stiffness matrix
+    
+    if(length(kM)==1)
+        vv=[kM(1);vv];
+    else
+        vv=[kM(1)+kM(2);vv];%applying BC?
+    end
+ 
+    KmatM = sparse(ii,jj,vv,Mnod+Nnod,Mnod+Nnod,(Mnod+Nnod)*3); %forming stiffness matrix
+
+
+    ii=[1;1;reshape(repmat(2:(Nnod-1),3,1),(Nnod-2)*3,1);Nnod]; %element colum K2
+    jj=(2:(Nnod-1)); jj=[jj-1;jj;jj+1];%element ordering row
+    jj=[1;2;reshape(jj,(Nnod-2)*3,1);Nnod];%change to vector
+    vv=[kN(1:end-1);kN(2:end)];
+    vv=[-vv(1,:); vv(1,:)+vv(2,:); -vv(2,:)];
+    vv=[kN(1);-kN(1);reshape(vv,(Nnod-2)*3,1)];%values for stiffness matrix
+    
+    if(length(kN)==1)
+        vv=[vv;kN(end)];
+    else
+        vv=[vv;kN(end-1)+kN(end)];%applying BC?
+    end
+    KmatN = sparse(Mnod+ii,Mnod+jj,vv,Mnod+Nnod,Mnod+Nnod,(Mnod+Nnod)*3); %adjoining matrices
+    
+    KcM = KmatM;
+    KcN = KmatN;
+    
+    for n = 1:nlev
+        
+    [interM,restM,KcM]=mlOper(KcM)
+    
+    end
+    
+    for n = 1:nlev
+        
+    [interN,restN,KcN]=mlOper(KcN)
+    
+    end
+    
+%     [interN,restN,KcN]=mlOper(KmatN)
+    
+    
+% KmatN =Kmat+sparse(Nno1+ii,Nno1+jj,vv,Nno1+Nno2,Nno1+Nno2,(Nno1+Nno2)*3); %adjoining matrices
+
+    
+end
+
 function [inter,rest,Kc]=mlOper(K)
+    
     sz1=size(K,1);
-    szc1=(sz1+1)/2;
+    szc1=floor((sz1+1)/2);%removed plus one from here seems to work but could creat bug down line?
+
     ii=[1;reshape(repmat((1:2:sz1-4),3,1)+(1:3)',[],1);sz1];
     jj=[1;reshape(repmat(2:(szc1-1),3,1),[],1);szc1];
-    ss=[1;repmat([0.5;1;0.5],szc1-2,1);1];
+    ss=[1;repmat([0.5;1;0.5],szc1-2,1);1]; %added floor instead for rounding to stop errors
+    
+    
     inter=sparse(ii,jj,ss,sz1,szc1,3*szc1+2);
     [ii,jj,ss]=find(inter(2:end-1,2:end-1));
     %inter grid to refine mesh
@@ -134,12 +217,3 @@ function [inter,rest,Kc]=mlOper(K)
 
     %coauresend C
 end
-
-function uNext=jacSmooth(w,K,b,uPrev,n)
-    for ii=1:n %for all ii
-        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev); %jacobien solver formula on wikipedia
-        uPrev=uNext;
-    end
-end
-
-
