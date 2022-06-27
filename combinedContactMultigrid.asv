@@ -185,9 +185,7 @@ function [inter,rest,Kc]=mlOper(K)
 end
 
 function [x1,u1,x2,u2] = mlTwoBodySolver(M,N,nlev,x20)
-
     [KmatM,KmatN,uM,uN,bM,bN] = matrixCreation(M,N);
-    
     KcM = KmatM;
     KcN = KmatN;
    
