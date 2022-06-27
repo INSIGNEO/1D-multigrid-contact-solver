@@ -134,23 +134,90 @@ end
 
 %Two MG Code
 
-function [KcN,KcM,ucM,ucN,bcM,bcN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN)
 
+function [KmatM,KmatN,uM,uN,bM,bN,kc]=matrixCreation(M,N,x20)%Creates M and N matrix and u
+
+    Mel=2^M; Mnod=Mel+1; Nel=2^N; Nnod=Nel+1; %Defines number of elemements and nodes could be better noted with M
+
+    xM=(0:(Mel))/(Mel);%lengh vector 1
+    ki=0.5;kf=5; %defining stiffness bounds
+    kM=(Mel)*(ki+(kf-ki)*0.5*(xM(1:end-1)+xM(2:end))); %defining stiffness vector
+
+    xN=(2^(N-M))*(0:(2^N))/(2^N);%lengh vector 2
+    kfix=2.5;% stiffness second spring
+    kN=(Nel)*(kfix+0.0*0.5*(xN(1:end-1)+xN(2:end)));%stiffness vector feel like it could be simplar
     
+    xN=x20+xN;%shifted spring
+    g0=xN(1)-xM(end); %gap
+    
+    ii=[1;reshape(repmat(2:(Mnod-1),3,1),(Mnod-2)*3,1);Mnod;Mnod];%element colum
+
+    jj=(2:(Mnod-1)); jj=[jj-1;jj;jj+1]; %element ordering row
+    jj=[1;reshape(jj,(Mnod-2)*3,1);Mnod-1;Mnod]; %change to vector
+    vv=[kM(1:end-1);kM(2:end)]; 
+    vv=[-vv(1,:); vv(1,:)+vv(2,:); -vv(2,:)];
+    vv=[reshape(vv,(Mnod-2)*3,1);-kN(end);kN(end)];%values for stiffness matrix
+    
+    if(length(kM)==1)
+        vv=[kM(1);vv];
+    else
+        vv=[kM(1)+kM(2);vv];%applying BC?
+    end
+ 
+    KmatM = sparse(ii,jj,vv,Mnod,Mnod,(Mnod)*3); %forming stiffness matrix
+
+
+    ii=[1;1;reshape(repmat(2:(Nnod-1),3,1),(Nnod-2)*3,1);Nnod]; %element colum K2
+    jj=(2:(Nnod-1)); jj=[jj-1;jj;jj+1];%element ordering row
+    jj=[1;2;reshape(jj,(Nnod-2)*3,1);Nnod];%change to vector
+    vv=[kN(1:end-1);kN(2:end)];
+    vv=[-vv(1,:); vv(1,:)+vv(2,:); -vv(2,:)];
+    vv=[kN(1);-kN(1);reshape(vv,(Nnod-2)*3,1)];%values for stiffness matrix
+    
+    if(length(kN)==1)
+        vv=[vv;kN(end)];
+    else
+        vv=[vv;kN(end-1)+kN(end)];%applying BC?
+    end
+
+    KmatN = sparse(ii,jj,vv,Nnod,Nnod,(Nnod)*3);
+%     KmatN = sparse(Mnod+ii,Mnod+jj,vv,Mnod+Nnod,Mnod+Nnod,(Mnod+Nnod)*3); %forming N matrix
+    
+  
+    %Defining U guess
+    uM=-0.01*(0:(Mnod-1))'/(Mnod-1);
+    uN=-0.01*(0:(Nnod-1))'/(Nnod-1);
+
+    %Defining B
+    bM=[zeros(Mnod-1,1);-0.01*(kM(end-1)+kM(end))];%no.element long zero matrix and concat -(k(n-1)+k(n)) on end BC
+    bN=[zeros(Nnod-1,1);-0.01*(kN(end-1)+kN(end))];
+
+    kc=1e3*0.5*(kM(end)+kN(1)); %penalty spring
+
+
+end
+
+function [KcM,KcN,ucM,ucN,bcM,bcN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN)
+
+    ucM = uM;
+    bcM = bM;
+    ucN = uN;
+    bcN = bN;
+
     
     for n = 1:nlev
         
     [interM,restM,KcM]=mlOper(KcM);
-    ucM = restM*uM;
-    bcM = restM*bM;
+    ucM = restM*ucM;
+    bcM = restM*bcM;
 
     end
     
     for n = 1:nlev
         
     [interN,restN,KcN]=mlOper(KcN);
-    ucN = restN*uN;
-    bcN = restN*bN;
+    ucN = restN*ucN;
+    bcN = restN*bcN;
 
 
     end
@@ -184,71 +251,54 @@ function [inter,rest,Kc]=mlOper(K)
     %coauresend C
 end
 
+function []=FirstContactSolver(KcN,KcM,ucM,ucN,bcM,bcN,kc)
+
+
+    U0=-g0-0.1;%-gap-spring length (penalty lenth?)
+    inc=10; %incremtent
+    tol=1e-6; %tolerance
+
+    Kmatc=Kmat+sparse(Nno1+[0;0;1;1],Nno1+[0;1;0;1], ...
+        kc*[-1;1;1;-1],Nno1+Nno2,Nno1+Nno2,4); %stiffness matrix inculuding penalty springs
+
+    rc=kc*sparse(Nno1+(0:1)',[1;1],[-1;1],Nno1+Nno2,1,2); %isolated just penalty springs (oposite sign) pulling canceler
+
+    for ii=1:inc %iterate till solution final
+        if(length(k2)==1) % penalty value
+            vv=(ii*U0/inc)*k2(end);
+        else
+            vv=(ii*U0/inc)*(k2(end-1)+k2(end));
+        end
+        
+        b=sparse(Nno1+Nno2,1,vv,Nno1+Nno2,1,1); %BC and location
+        u=Kmat\b; %displacment finded
+        overc=u(Nno1+1)-u(Nno1)+g0; %over corrention is has been pushed in too far? (over closure)
+        du=inf;
+        
+        if (overc<0)%if penertarting
+            while (max(abs(du))>tol*abs(U0/inc))%moving back spring
+                du=Kmatc\(b+rc*overc-Kmat*u); %small push back factor
+                u=u+du;%push back
+                overc=u(Nno1+1)-u(Nno1)+g0; %redfine over correction
+            end
+        end
+    end
+    u1=u(1:Nno1);u2=u(Nno1+(1:Nno2)); %final answer
+end
+
 function [x1,u1,x2,u2] = mlTwoBodySolver(M,N,nlev,x20)
-    [KmatM,KmatN,uM,uN,bM,bN] = matrixCreation(M,N);
+
+    [KmatM,KmatN,uM,uN,bM,bN,kc] = matrixCreation(M,N,x20);
     KcM = KmatM;
     KcN = KmatN;
    
-    [KcN,KcM,ucM,ucN,bcM,bcN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN);
-
-
-end
-
-function [KmatM,KmatN,uM,uN,bM,bN]=matrixCreation(M,N)%Creates M and N matrix and u
-
-    Mel=2^M; Mnod=Mel+1; Nel=2^N; Nnod=Nel+1; %Defines number of elemements and nodes could be better noted with M
-
-    xM=(0:(Mel))/(Mel);%lengh vector 1
-    ki=0.5;kf=5; %defining stiffness bounds
-    kM=(Mel)*(ki+(kf-ki)*0.5*(xM(1:end-1)+xM(2:end))); %defining stiffness vector
-
-    xN=(2^(N-M))*(0:(2^N))/(2^N);%lengh vector 2
-    kfix=2.5;% stiffness second spring
-    kN=(Nel)*(kfix+0.0*0.5*(xN(1:end-1)+xN(2:end)));%stiffness vector feel like it could be simplar
+    [KcM,KcN,ucM,ucN,bcM,bcN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN);
     
-    xN=x20+xN;%shifted spring
-    g0=xN(1)-xM(end); %gap
-    
-    ii=[1;reshape(repmat(2:(Mnod-1),3,1),(Mnod-2)*3,1);Mnod;Mnod];%element colum
+    [iiN, jjN, ss] = find(S);
+    [iiM, jjM, st] = find(T);
+    ST = sparse([is; it + size(S,1)], [js; jt], [ss; st]);
 
-    jj=(2:(Mnod-1)); jj=[jj-1;jj;jj+1]; %element ordering row
-    jj=[1;reshape(jj,(Mnod-2)*3,1);Mnod-1;Mnod]; %change to vector
-    vv=[kM(1:end-1);kM(2:end)]; 
-    vv=[-vv(1,:); vv(1,:)+vv(2,:); -vv(2,:)];
-    vv=[reshape(vv,(Mnod-2)*3,1);-kN(end);kN(end)];%values for stiffness matrix
-    
-    if(length(kM)==1)
-        vv=[kM(1);vv];
-    else
-        vv=[kM(1)+kM(2);vv];%applying BC?
-    end
- 
-    KmatM = sparse(ii,jj,vv,Mnod+Nnod,Mnod+Nnod,(Mnod+Nnod)*3); %forming stiffness matrix
+    FirstContactSolver(KcMat,ucM,ucN,bcM,bcN,kc)
 
-
-    ii=[1;1;reshape(repmat(2:(Nnod-1),3,1),(Nnod-2)*3,1);Nnod]; %element colum K2
-    jj=(2:(Nnod-1)); jj=[jj-1;jj;jj+1];%element ordering row
-    jj=[1;2;reshape(jj,(Nnod-2)*3,1);Nnod];%change to vector
-    vv=[kN(1:end-1);kN(2:end)];
-    vv=[-vv(1,:); vv(1,:)+vv(2,:); -vv(2,:)];
-    vv=[kN(1);-kN(1);reshape(vv,(Nnod-2)*3,1)];%values for stiffness matrix
-    
-    if(length(kN)==1)
-        vv=[vv;kN(end)];
-    else
-        vv=[vv;kN(end-1)+kN(end)];%applying BC?
-    end
-
-    KmatN = sparse(ii,jj,vv,Nnod,Nnod,(Nnod)*3);
-%     KmatN = sparse(Mnod+ii,Mnod+jj,vv,Mnod+Nnod,Mnod+Nnod,(Mnod+Nnod)*3); %forming N matrix
-    
-  
-    %Defining U guess
-    uM=-0.01*(0:(Nnod-1))'/(Nnod-1);
-    uN=-0.01*(0:(Nnod-1))'/(Nnod-1);
-
-    %Defining B
-    bM=[zeros(Nno-1,1);-0.01*(kM(end-1)+kM(end))];%no.element long zero matrix and concat -(k(n-1)+k(n)) on end BC
-    bN=[zeros(Nno-1,1);-0.01*(kN(end-1)+kN(end))];
 
 end
