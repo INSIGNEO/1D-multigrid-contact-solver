@@ -2,12 +2,16 @@
 % solveTwoBody(3,4,1)
 % coarsTwoBody(3,4,1,2)
 
-M=2;
-N=3;
+M=5;
+N=5;
 nlev=2;
 x20=1;
 
 mlTwoBodySolver(M,N,nlev,x20)
+
+% [x1,u1,x2,u2]=solveTwoBody(M,N,x20);
+% u1
+% u2
 
 %Two Body Functions
 function [x1,u1,x2,u2]=solveTwoBody(M,N,x20)
@@ -134,8 +138,7 @@ end
 
 %Two MG Code
 
-
-function [KmatM,KmatN,uM,uN,bM,bN,kc]=matrixCreation(M,N,x20)%Creates M and N matrix and u
+function [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN]=matrixCreation(M,N,x20)%Creates M and N matrix and u
 
     Mel=2^M; Mnod=Mel+1; Nel=2^N; Nnod=Nel+1; %Defines number of elemements and nodes could be better noted with M
 
@@ -251,56 +254,67 @@ function [inter,rest,Kc]=mlOper(K)
     %coauresend C
 end
 
-function []=FirstContactSolver(KcN,KcM,ucM,ucN,bcM,bcN,kc)
+function [uSolve]=FirstContactSolver(KcMat,uSolve,bSolve,kc,g0,McNod,NcNod,kN)
 
 
     U0=-g0-0.1;%-gap-spring length (penalty lenth?)
     inc=10; %incremtent
     tol=1e-6; %tolerance
 
-    Kmatc=Kmat+sparse(Nno1+[0;0;1;1],Nno1+[0;1;0;1], ...
-        kc*[-1;1;1;-1],Nno1+Nno2,Nno1+Nno2,4); %stiffness matrix inculuding penalty springs
+    kMatCon=KcMat+sparse(McNod+[0;0;1;1],McNod+[0;1;0;1], ...
+        kc*[-1;1;1;-1],McNod+NcNod,McNod+NcNod,4); %stiffness matrix inculuding penalty springs
 
-    rc=kc*sparse(Nno1+(0:1)',[1;1],[-1;1],Nno1+Nno2,1,2); %isolated just penalty springs (oposite sign) pulling canceler
+    rc=kc*sparse(McNod+(0:1)',[1;1],[-1;1],McNod+NcNod,1,2); %isolated just penalty springs (oposite sign) pulling canceler
 
     for ii=1:inc %iterate till solution final
-        if(length(k2)==1) % penalty value
-            vv=(ii*U0/inc)*k2(end);
+        if(length(kN)==1) % penalty value
+            vv=(ii*U0/inc)*kN(end);
         else
-            vv=(ii*U0/inc)*(k2(end-1)+k2(end));
+            vv=(ii*U0/inc)*(kN(end-1)+kN(end));
         end
         
-        b=sparse(Nno1+Nno2,1,vv,Nno1+Nno2,1,1); %BC and location
-        u=Kmat\b; %displacment finded
-        overc=u(Nno1+1)-u(Nno1)+g0; %over corrention is has been pushed in too far? (over closure)
+        b=sparse(McNod+NcNod,1,vv,McNod+NcNod,1,1); %BC and locatiom
+%         uSolve=Kmat\b; %displacment finded
+        uSolve = pcg(KcMat,b);
+        
+        overc=uSolve(McNod+1)-uSolve(McNod)+g0; %over corrention is has been pushed in too far? (over closure)
         du=inf;
         
         if (overc<0)%if penertarting
             while (max(abs(du))>tol*abs(U0/inc))%moving back spring
-                du=Kmatc\(b+rc*overc-Kmat*u); %small push back factor
-                u=u+du;%push back
-                overc=u(Nno1+1)-u(Nno1)+g0; %redfine over correction
-            end
+                du=kMatCon\(b+rc*overc-KcMat*uSolve); %small push back factor
+%                 du = pcg(kMatCon,(b+rc*overc-KcMat*uSolve)); %chech how to use pcg here
+                uSolve=uSolve+du;%push back
+                overc=uSolve(McNod+1)-uSolve(McNod)+g0; %redfine over correction
+            end 
         end
     end
-    u1=u(1:Nno1);u2=u(Nno1+(1:Nno2)); %final answer
+%     u1=u(1:Nno1);u2=u(Nno1+(1:NcNod)); %final answer
 end
 
 function [x1,u1,x2,u2] = mlTwoBodySolver(M,N,nlev,x20)
 
-    [KmatM,KmatN,uM,uN,bM,bN,kc] = matrixCreation(M,N,x20);
+    [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN] = matrixCreation(M,N,x20);
     KcM = KmatM;
     KcN = KmatN;
    
     [KcM,KcN,ucM,ucN,bcM,bcN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN);
-    
+
+    McNod = size(ucM,1);
+    NcNod = size(ucN,1);
     
     [iiM, jjM, vvM] = find(KcM);
     [iiN, jjN, vvN] = find(KcN);
     
     KcMat = sparse([iiM; iiN + size(KcM,1)], [jjM; jjN+size(KcM,1)], [vvM; vvN]);
+    uSolve= vertcat(ucM,ucN);
+    bSolve= vertcat(bcM,bcN);
+
+    [uSolve]=FirstContactSolver(KcMat,uSolve,bSolve,kc,g0,McNod,NcNod,kN);
 
 %     FirstContactSolver(KcMat,ucM,ucN,bcM,bcN,kc)
-
+    
+    u1=uSolve(1:McNod);
+    u2=uSolve(McNod+(1:NcNod)); %final answer
 
 end
