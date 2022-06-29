@@ -274,21 +274,7 @@ function [x1,u1,x2,u2] = mlTwoBodySolver(M,N,nlev,x20)
 
     %jacobi twice
 
-    %if coarsest 
-
-    %use pcg
-
-    
-    %else
-
-    %compute multigrid
-    %compute residual and restrict it to coasrer grid
-    %use mlsolve to compute update
-    %interpolate update and add vecotor to solution
-    
-    %end if
-
-    %use jacobi twice
+    %if c
 
     %end mlSolve
 
