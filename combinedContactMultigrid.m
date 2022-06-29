@@ -4,7 +4,7 @@
 
 M=5;
 N=5;
-nlev=2;
+nlev=3;
 x20=1;
 
 mlTwoBodySolver(M,N,nlev,x20)
@@ -117,10 +117,10 @@ end
 function u=mlSolve(w,K,b,u,n,lev)
 
     if lev>1 %if level is greater that 1
-        %finding it hard to follow this part of the code
-        u=jacSmooth(w,K,b,u,n);
-        [inter,rest,Kc]=mlOper(K);
-        rc=rest*(b-K*u);
+        
+        u=jacSmooth(w,K,b,u,n); %jacobi
+        [inter,rest,Kc]=mlOper(K); %coarsen
+        rc=rest*(b-K*u); %residuals
         u=u+inter*mlSolve(w,Kc,rc,0*rc,n,lev-1);
         u=jacSmooth(w,K,b,u,n);
     else %at largest level use PCG to solve 
@@ -129,12 +129,6 @@ function u=mlSolve(w,K,b,u,n,lev)
     end
 end
 
-function uNext=jacSmooth(w,K,b,uPrev,n)
-    for ii=1:n %for all ii
-        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev); %jacobien solver formula on wikipedia
-        uPrev=uNext;
-    end
-end
 
 %Two MG Code
 
@@ -200,7 +194,7 @@ function [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN]=matrixCreation(M,N,x20)%Creates M an
 
 end
 
-function [KcM,KcN,ucM,ucN,bcM,bcN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN)
+function [KcM,KcN,ucM,ucN,bcM,bcN,interM,interN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN)
 
     ucM = uM;
     bcM = bM;
@@ -257,6 +251,7 @@ end
 function [uSolve]=FirstContactSolver(KcMat,uSolve,bSolve,kc,g0,McNod,NcNod,kN)
 
 
+
     U0=-g0-0.1;%-gap-spring length (penalty lenth?)
     inc=10; %incremtent
     tol=1e-6; %tolerance
@@ -292,27 +287,66 @@ function [uSolve]=FirstContactSolver(KcMat,uSolve,bSolve,kc,g0,McNod,NcNod,kN)
 %     u1=u(1:Nno1);u2=u(Nno1+(1:NcNod)); %final answer
 end
 
+function uNext=jacSmooth(w,K,b,uPrev,n)
+    for ii=1:n %for all ii
+        uNext=uPrev+w*diag(1./diag(K))*(b-K*uPrev); %jacobien solver formula on wikipedia
+        uPrev=uNext;
+    end
+end
+
+
 function [x1,u1,x2,u2] = mlTwoBodySolver(M,N,nlev,x20)
 
-    [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN] = matrixCreation(M,N,x20);
+    [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN] = matrixCreation(M,N,x20); %Matrix Creation
     KcM = KmatM;
-    KcN = KmatN;
+    KcN = KmatN; %Redfining matrix to be coursened matrix
    
-    [KcM,KcN,ucM,ucN,bcM,bcN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN);
+    [KcM,KcN,ucM,ucN,bcM,bcN,interM,interN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN); %Coarsening bodies together
 
-    McNod = size(ucM,1);
-    NcNod = size(ucN,1);
+    McNod = size(ucM,1); 
+    NcNod = size(ucN,1); %No. of coarsened nodes
     
     [iiM, jjM, vvM] = find(KcM);
     [iiN, jjN, vvN] = find(KcN);
     
-    KcMat = sparse([iiM; iiN + size(KcM,1)], [jjM; jjN+size(KcM,1)], [vvM; vvN]);
-    uSolve= vertcat(ucM,ucN);
-    bSolve= vertcat(bcM,bcN);
+    KcMat = sparse([iiM; iiN + size(KcM,1)], [jjM; jjN+size(KcM,1)], [vvM; vvN]); %Concat K matrix together (check logic)
+    uSolve= vertcat(ucM,ucN);%combinging first guess
+    bSolve= vertcat(bcM,bcN);%this line may not be needed
 
-    [uSolve]=FirstContactSolver(KcMat,uSolve,bSolve,kc,g0,McNod,NcNod,kN);
+    [uSolve]=FirstContactSolver(KcMat,uSolve,bSolve,kc,g0,McNod,NcNod,kN) %Coarsest level of contact
 
-%     FirstContactSolver(KcMat,ucM,ucN,bcM,bcN,kc)
+    %Refined levels of contact
+    for currentLev = 1:(nlev-1)
+
+        currentLev = nlev-currentLev;%So it counts down
+
+        uGM=uSolve(1:McNod); %Spliting U for M and N
+        uGN=uSolve(McNod+(1:NcNod));
+
+        uGM=interM*uGM; %interpolatioing guess using previous matrix
+        uGN=interN*uGN;
+
+        [KcM,KcN,ucM,ucN,bcM,bcN,interM,interN]=coarsTwoBody(currentLev,KmatM,KmatN,uM,uN,bM,bN);
+        
+        ucM = uGM;%override gentered u with guessed u
+        ucN = uGN;
+        
+        McNod = size(ucM,1); 
+        NcNod = size(ucN,1); %No. of coarsened nodes
+    
+        [iiM, jjM, vvM] = find(KcM);%break down coarsended matrix to be reco
+        [iiN, jjN, vvN] = find(KcN);
+        
+        KcMat = sparse([iiM; iiN + size(KcM,1)], [jjM; jjN+size(KcM,1)], [vvM; vvN]); %Concat K matrix together (check logic)
+        uSolve= vertcat(ucM,ucN);%combinging first guess
+        bSolve= vertcat(bcM,bcN);%this line may not be needed
+        
+        
+
+    end
+
+
+
     
     u1=uSolve(1:McNod);
     u2=uSolve(McNod+(1:NcNod)); %final answer
