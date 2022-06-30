@@ -1,6 +1,12 @@
 % solveOneBody(5,3)
 % solveTwoBody(3,4,1)
-coarsTwoBody(3,4,1,2)
+M=6;
+N=6;
+nlev=1;
+x20=1;
+
+mlTwoBodySolver(M,N,nlev,x20)
+
 
 
 %Two Body Functions
@@ -74,7 +80,6 @@ u1=u(1:Nno1);u2=u(Nno1+(1:Nno2)); %final answer
 end
 
 %One Body Functions
-
 function [x,u]=solveOneBody(N,nlev)
     Nel=2^N; %Defines Number of Elements
     Nno=Nel+1; %Defines Numnber of Nodes
@@ -103,22 +108,6 @@ function [x,u]=solveOneBody(N,nlev)
     % u=pcg(Kmat,b,[],[],m,m,u);
     % u=Kmat\b;
 end
-
-function u=mlSolve(w,K,b,u,n,lev)
-
-    if lev>1 %if level is greater that 1
-        %finding it hard to follow this part of the code
-        u=jacSmooth(w,K,b,u,n);
-        [inter,rest,Kc]=mlOper(K);
-        rc=rest*(b-K*u);
-        u=u+inter*mlSolve(w,Kc,rc,0*rc,n,lev-1);
-        u=jacSmooth(w,K,b,u,n);
-    else %at largest level use PCG to solve 
-        m=diag(diag(K));
-        u=pcg(K,b,[],[],m);
-    end
-end
-
 
 function uNext=jacSmooth(w,K,b,uPrev,n)
     for ii=1:n %for all ii
@@ -160,7 +149,6 @@ function [KcM,KcN,ucM,ucN,bcM,bcN,interM,interN]=coarsTwoBody(nlev,KcM,KcN,uM,uN
 % KmatN =Kmat+sparse(Nno1+ii,Nno1+jj,vv,Nno1+Nno2,Nno1+Nno2,(Nno1+Nno2)*3); %adjoining matrices
 
 end
-
 
 function [inter,rest,Kc]=mlOper(K)
     
@@ -245,71 +233,96 @@ function [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN]=matrixCreation(M,N,x20)%Creates M an
 
 end
 
-function [x1,u1,x2,u2] = mlTwoBodySolver(M,N,nlev,x20)
+function [uSolve] = mlTwoBodySolver(M,N,nlev,x20)
 
+    inc = 10;
 
     %Create Matrix at finest level
+    [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN]=matrixCreation(M,N,x20);
 
-    %For each increment (function)
-
-
-    %update load b
-    %iterate contact (function)
-
-    %end Increment
-
-
-    %iterate contact (function)
-    %while du too big or less that x iteration
-
-    %detect contact
-
-    %compute contact contribution
-
-    %mlsolve (function)
-
-    %end iterate
-    
-    %mlsolve (function)
-
-    %jacobi twice
-
-    %if coarsest 
-
-    %use pcg
-
-    
-    %else
-
-    %compute multigrid
-    %compute residual and restrict it to coasrer grid
-    %use mlsolve to compute update
-    %interpolate update and add vecotor to solution
-    
-    %end if
-
-    %use jacobi twice
-
-    %end mlSolve
-
-
-
-
-
-    [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN] = matrixCreation(M,N,x20); %Matrix Creation
     KcM = KmatM;
     KcN = KmatN; %Redfining matrix to be coursened matrix
-   
-    [KcM,KcN,ucM,ucN,bcM,bcN,interM,interN]=coarsTwoBody(nlev,KcM,KcN,uM,uN,bM,bN); %Coarsening bodies together
-
-    McNod = size(ucM,1); 
-    NcNod = size(ucN,1); %No. of coarsened nodes
     
     [iiM, jjM, vvM] = find(KcM);
     [iiN, jjN, vvN] = find(KcN);
     
-    KcMat = sparse([iiM; iiN + size(KcM,1)], [jjM; jjN+size(KcM,1)], [vvM; vvN]); %Concat K matrix together (check logic)
-    uSolve= vertcat(ucM,ucN);%combinging first guess
-    bSolve= vertcat(bcM,bcN);%this line may not be needed
+    K = sparse([iiM; iiN + size(KcM,1)], [jjM; jjN+size(KcM,1)], [vvM; vvN]); %Concat K matrix together (check logic)
+    uSolve= vertcat(uM,uN);%combinging first guess
+    bSolve= vertcat(bM,bN);%this line may not be needed
+
+    McNod = size(uM,1);
+    Nod = size(K,1);
+
+    Kmatc=K+sparse(McNod+[0;0;1;1],McNod+[0;1;0;1], ...
+    kc*[-1;1;1;-1],Nod,Nod,4); %stiffness matrix inculuding penalty springs
+
+    rc=kc*sparse(McNod+(0:1)',[1;1],[-1;1],Nod,1,2);
+
+    U0=-g0-0.1;
+
+    %For each increment (function)
+    for lev= 1:inc
+    
+    %update load b
+    if(length(kN)==1) % penalty value
+        vv=(lev*U0/inc)*kN(end);
+    else
+        vv=(lev*U0/inc)*(kN(end-1)+kN(end));
+    end
+    
+    b=sparse(Nod,1,vv,Nod,1,1);
+    %iterate contact (function)
+    [uSolve]=contact(K,uSolve,b,McNod,g0,nlev,inc,Kmatc,rc);
+    
+    end %end Increment
+
 end
 
+function [u]=contact(K,u,b,Nno1,g0,nlev,inc,Kmatc,rc)
+    U0=-g0-0.1;
+    
+    tol=1e-6; %tolerance
+    x=1;
+    du=inf;
+    %while du too big or less that x iteration
+    while ((du>tol) && (x < 10))
+    overc=u(Nno1+1)-u(Nno1)+g0; %define overclosure
+    %detect contact
+    if (overc<0)%if penertarting
+        while (max(abs(du))>tol*abs(U0/inc))%moving back spring
+            du=Kmatc\(b+rc*overc-K*u); %small push back factor
+            u=u+du;%push back
+            overc=u(Nno1+1)-u(Nno1)+g0; %redfine over closure
+        end
+    end
+    %compute contact contribution
+
+    %mlsolve (function)
+
+    u=mlSolve(0.61,K,b,u,2,nlev);
+
+    x=x+1;
+    end
+    %end iterate
+end
+
+
+
+function u=mlSolve(w,K,b,u,n,lev)
+    u=jacSmooth(w,K,b,u,n); %jacobi twice
+
+    if lev>1 %if level is greater that 1
+
+        [inter,rest,Kc]=mlOper(K);
+
+        rc=rest*(b-K*u);  %compute residual and restrict it to coasrer grid
+        
+        u=u+inter*mlSolve(w,Kc,rc,0*rc,n,lev-1); %use mlsolve to compute update %interpolate update and add vecotor to solution
+
+    else %if coarsest 
+        m=diag(diag(K));
+        u=pcg(K,b,[],[],m);%use pcg
+    end
+
+    u=jacSmooth(w,K,b,u,n); %jacobi twice
+end
