@@ -5,7 +5,7 @@ N=6;
 nlev=1;
 x20=1;
 
-mlTwoBodySolver(M,N,nlev,x20)
+[u]=mlTwoBodySolver(M,N,nlev,x20);
 
 
 
@@ -176,7 +176,7 @@ function [KmatM,KmatN,uM,uN,bM,bN,kc,g0,kN]=matrixCreation(M,N,x20)%Creates M an
     Mel=2^M; Mnod=Mel+1; Nel=2^N; Nnod=Nel+1; %Defines number of elemements and nodes could be better noted with M
 
     xM=(0:(Mel))/(Mel);%lengh vector 1
-    ki=0.5;kf=5; %defining stiffness bounds
+    ki=5;kf=5; %defining stiffness bounds
     kM=(Mel)*(ki+(kf-ki)*0.5*(xM(1:end-1)+xM(2:end))); %defining stiffness vector
 
     xN=(2^(N-M))*(0:(2^N))/(2^N);%lengh vector 2
@@ -247,6 +247,7 @@ function [uSolve] = mlTwoBodySolver(M,N,nlev,x20)
     [iiN, jjN, vvN] = find(KcN);
     
     K = sparse([iiM; iiN + size(KcM,1)], [jjM; jjN+size(KcM,1)], [vvM; vvN]); %Concat K matrix together (check logic)
+
     uSolve= vertcat(uM,uN);%combinging first guess
     bSolve= vertcat(bM,bN);%this line may not be needed
 
@@ -285,11 +286,16 @@ function [u]=contact(K,u,b,Nno1,g0,nlev,inc,Kmatc,rc)
     x=1;
     du=inf;
     %while du too big or less that x iteration
-    while ((du>tol) && (x < 10))
+    while ((max(du)>tol) && (x < 10))
+
+%     u=mlSolve(0.61,K,b,u,2,nlev);
+    u=K\b;
+
     overc=u(Nno1+1)-u(Nno1)+g0; %define overclosure
     %detect contact
     if (overc<0)%if penertarting
         while (max(abs(du))>tol*abs(U0/inc))%moving back spring
+%             du = mlSolve(0.61,Kmatc,(b+rc*overc-K*u),u,2,nlev);
             du=Kmatc\(b+rc*overc-K*u); %small push back factor
             u=u+du;%push back
             overc=u(Nno1+1)-u(Nno1)+g0; %redfine over closure
@@ -299,7 +305,7 @@ function [u]=contact(K,u,b,Nno1,g0,nlev,inc,Kmatc,rc)
 
     %mlsolve (function)
 
-    u=mlSolve(0.61,K,b,u,2,nlev);
+%     u=mlSolve(0.61,K,b,u,2,nlev);
 
     x=x+1;
     end
