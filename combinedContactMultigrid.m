@@ -5,11 +5,35 @@ N=6;
 nlev=1;
 x20=1;
 
+hold on 
 % [u]=mlTwoBodySolver(M,N,nlev,x20);
 
-[x1,u1,x2,u2]=solveTwoBodyML(M,N,x20,nlev)
-x=(0:130);
-plot (x,diag(u))
+[x1,u1,x2,u2]=solveTwoBodyML(M,N,x20,nlev);
+
+% [x1,u1,x2,u2]=solveTwoBodyML(M,N,x20,2);
+% 
+% [x1,u1,x2,u2]=solveTwoBodyML(M,N,x20,3);
+% 
+% [x1,u1,x2,u2]=solveTwoBodyML(M,N,x20,4);
+% 
+% [x1,u1,x2,u2]=solveTwoBodyML(M,N,x20,5);
+
+
+
+
+% plot (x1,u1)
+% hold on 
+% plot (x2,u2)
+
+
+
+
+[x1,u1,x2,u2]=solveTwoBody(M,N,x20);
+
+% x=(0:130);
+plot (x1,u1)
+hold on 
+plot (x2,u2)
 
 %Two Body Functions
 function [x1,u1,x2,u2]=solveTwoBody(M,N,x20)
@@ -330,6 +354,8 @@ function u=mlSolve(w,K,b,u,n,lev)
     else %if coarsest 
         m=diag(diag(K));
         u=pcg(K,b,[],[],m);%use pcg
+        u=jacSmooth(w,K,b,u,1000);
+        
     end
 
     u=jacSmooth(w,K,b,u,n); %jacobi twice
@@ -385,6 +411,9 @@ Kmatc=Kmat+sparse(Nno1+[0;0;1;1],Nno1+[0;1;0;1], ...
 rc=kc*sparse(Nno1+(0:1)',[1;1],[-1;1],Nno1+Nno2,1,2); %isolated just penalty springs (oposite sign) pulling canceler
 
 u=-0.01*(0:(Nno1+Nno2-1))'/(Nno1+Nno2-1);
+% x = 1:(Nno1+Nno2);
+%     x = x.*(2/(Nno1+Nno2+1));
+%     plot (x,u)
 
 for ii=1:inc %iterate till solution final
     if(length(k2)==1) % penalty value
@@ -399,16 +428,27 @@ for ii=1:inc %iterate till solution final
     u = mlSolve(0.61,Kmat,b,u,2,nlev);
 
     overc=u(Nno1+1)-u(Nno1)+g0; %over corrention is has been pushed in too far? (over closure)
-    du=-1;
-    
+    du=u*tol*10;
+    count = 0;
+
     if (overc<0)%if penertarting
-        while (max(abs(du))>tol*abs(U0/inc))%moving back spring
+        while (max(abs(du))>tol*abs(U0/inc)) & count < 10 %moving back spring
 %             du=Kmatc\(b+rc*overc-Kmat*u); %small push back factor
             du = mlSolve(0.61,Kmatc,(b+rc*overc-Kmat*u),du,2,nlev);
             u=u+du;%push back
             overc=u(Nno1+1)-u(Nno1)+g0; %redfine over correction
+            count = count + 1;
         end
     end
+%     x = 1:(Nno1+Nno2);
+%     x = x.*(2/(Nno1+Nno2+1));
+%     plot (x,u)
+    
 end
 u1=u(1:Nno1);u2=u(Nno1+(1:Nno2)); %final answer
+
+x = vertcat (x1',x2');
+plot (x,u)
+
+
 end
